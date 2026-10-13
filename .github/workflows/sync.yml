@@ -113,7 +113,7 @@ jobs:
           else:
               # A previous run may have pushed the tag before release creation.
               # Verify that this checkout still packages exactly the tagged files.
-              subprocess.run(['git', 'diff', '--exit-code', tag, 'HEAD', '--', 'libmp.luau', 'LICENSE', 'LICENSES', 'upstream.json', 'wally.toml', 'default.project.json', 'README.md'], check=True)
+              subprocess.run(['git', 'diff', '--exit-code', tag, 'HEAD', '--', 'libmp.luau', 'LICENSE', 'LICENSES', 'upstream.json', 'wally.toml', 'default.project.json'], check=True)
           upstream = json.loads(pathlib.Path('upstream.json').read_text())
           notes = pathlib.Path('dist/release-notes.md')
           notes.write_text(

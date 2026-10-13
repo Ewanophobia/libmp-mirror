@@ -48,7 +48,7 @@ The workflow:
 
 Upstream `1.1` becomes Wally `1.1.0`. Normally package versions match upstream. If upstream replaces a release asset or its notices, the mirror increments its patch version, since published Wally versions cannot be replaced. If that uses a version later selected by upstream, the mirror increments again to keep versions increasing; `upstream.json` always records the exact source release. Prereleases and development-branch commits are not published.
 
-Publishing is retried even when no new commit is needed, so a temporary registry failure can recover on the next run. Existing registry packages must match the local package contents. An occasional empty keepalive commit prevents GitHub from disabling scheduled workflows after 60 days without repository activity.
+Publishing is retried even when no new commit is needed, so a temporary registry failure can recover on the next run. Existing registry packages must match the local package contents, except that README documentation may change without republishing. An occasional empty keepalive commit prevents GitHub from disabling scheduled workflows after 60 days without repository activity.
 
 ### Maintainers
 
