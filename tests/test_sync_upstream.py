@@ -103,10 +103,10 @@ class VersionTests(OfflineTests):
             "releases?per_page=100&page=1", "releases?per_page=100&page=2",
         ])
 
-    def test_replacement_and_upstream_patch_collisions_stay_monotonic(self):
+    def test_package_version_always_matches_normalized_upstream_version(self):
         self.assertEqual(sync.next_version("v1.1", None), "1.1.0")
         previous = {"upstream": {"tag": "1.1"}, "wally_version": "1.1.3"}
-        for tag, expected in (("1.1", "1.1.4"), ("1.1.2", "1.1.4"), ("1.2", "1.2.0")):
+        for tag, expected in (("1.1", "1.1.0"), ("1.1.2", "1.1.2"), ("1.2", "1.2.0")):
             with self.subTest(tag=tag):
                 self.assertEqual(sync.next_version(tag, previous), expected)
         with self.assertRaisesRegex(ValueError, "downgrade"):
@@ -211,24 +211,53 @@ class MirrorTests(OfflineTests):
         self.assertEqual(metadata["wally_version"], "1.1.0")
         self.assertEqual(metadata["upstream"]["commit"], COMMIT)
         self.assertEqual(metadata["files"], {name: sync.sha256(data) for name, data in FILES.items()})
-        self.assertIn("ewanophobia/libmp-mirror@1.1.0", (self.root / "README.md").read_text())
+        self.assertIn("ewanophobia/libmp-mirror@=1.1.0", (self.root / "README.md").read_text())
         before = self.snapshot()
         mtimes = {path: path.stat().st_mtime_ns for path in self.root.rglob("*") if path.is_file()}
         self.assertFalse(sync.sync(self.root))
         self.assertEqual(self.snapshot(), before)
         self.assertEqual({path: path.stat().st_mtime_ns for path in mtimes}, mtimes)
 
-    def test_changed_release_asset_bumps_then_colliding_upstream_version_bumps_again(self):
+    def test_same_normalized_release_changed_files_are_rejected_without_writing(self):
         sync.sync(self.root)
-        self.files["libmp.luau"] = b"return {replaced = true}\n"
+        for tag in ("1.1", "1.1.0", "v1.1.0"):
+            for name in FILES:
+                with self.subTest(tag=tag, file=name):
+                    self.upstream = release(tag)
+                    self.files = {**FILES, name: FILES[name] + b"Changed upstream contents\n"}
+                    before = self.snapshot()
+                    with self.assertRaisesRegex(ValueError, "versions are immutable; wait for a new numbered"):
+                        sync.sync(self.root)
+                    self.assertEqual(self.snapshot(), before)
+
+    def test_old_package_patch_version_is_normalized_without_source_changes(self):
+        sync.sync(self.root)
+        manifest_path = self.root / "wally.toml"
+        manifest_path.write_text(manifest_path.read_text().replace('version = "1.1.0"', 'version = "1.1.1"'))
+        metadata_path = self.root / "upstream.json"
+        previous = json.loads(metadata_path.read_text())
+        previous["wally_version"] = "1.1.1"
+        metadata_path.write_text(json.dumps(previous))
+        (self.root / "README.md").write_text('LibMP = "ewanophobia/libmp-mirror@=1.1.1"\n')
+
         self.assertTrue(sync.sync(self.root))
-        self.assertEqual(tomllib.loads((self.root / "wally.toml").read_text())["package"]["version"], "1.1.1")
+        self.assertEqual(tomllib.loads(manifest_path.read_text())["package"]["version"], "1.1.0")
+        self.assertEqual(json.loads(metadata_path.read_text())["wally_version"], "1.1.0")
+        self.assertIn("ewanophobia/libmp-mirror@=1.1.0", (self.root / "README.md").read_text())
+        for name, data in FILES.items():
+            self.assertEqual((self.root / name).read_bytes(), data)
+        self.assertFalse(sync.sync(self.root))
+
+    def test_new_upstream_release_uses_its_exact_version(self):
+        sync.sync(self.root)
         self.upstream = release("1.1.1")
         self.files["libmp.luau"] = b"return {newRelease = true}\n"
         self.assertTrue(sync.sync(self.root))
-        self.assertEqual(tomllib.loads((self.root / "wally.toml").read_text())["package"]["version"], "1.1.2")
+        self.assertEqual(tomllib.loads((self.root / "wally.toml").read_text())["package"]["version"], "1.1.1")
+        self.assertEqual((self.root / "libmp.luau").read_bytes(), self.files["libmp.luau"])
+        self.assertIn("ewanophobia/libmp-mirror@=1.1.1", (self.root / "README.md").read_text())
 
-    def test_initial_and_replacement_sync_preserve_repository_license(self):
+    def test_initial_and_new_release_sync_preserve_repository_license(self):
         repository_license = b"Repository-owned Unlicense text\n"
         license_path = self.root / "LICENSE"
         license_path.write_bytes(repository_license)
@@ -237,6 +266,7 @@ class MirrorTests(OfflineTests):
         self.assertEqual(license_path.read_bytes(), repository_license)
         self.assertEqual((self.root / "LICENSES/libmp.txt").read_bytes(), FILES["LICENSES/libmp.txt"])
 
+        self.upstream = release("1.2")
         self.files["LICENSES/libmp.txt"] = b"Updated upstream LibMP license\n"
         self.assertTrue(sync.sync(self.root))
         self.assertEqual(license_path.read_bytes(), repository_license)

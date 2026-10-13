@@ -185,15 +185,9 @@ def release_files(release, commit):
 
 def next_version(upstream_version, previous):
     base = parse_version(upstream_version)
-    if previous is None:
-        return version_text(base)
-    old_source = parse_version(previous["upstream"]["tag"])
-    if base < old_source:
+    if previous and base < parse_version(previous["upstream"]["tag"]):
         raise ValueError("Refusing to downgrade to an older upstream release")
-    old_package = parse_version(previous["wally_version"])
-    if base > old_package:
-        return version_text(base)
-    return version_text((old_package[0], old_package[1], old_package[2] + 1))
+    return version_text(base)
 
 
 def sync(root=ROOT):
@@ -203,19 +197,23 @@ def sync(root=ROOT):
     hashes = {name: sha256(data) for name, data in sorted(files.items())}
     metadata_path = root / "upstream.json"
     previous = json.loads(metadata_path.read_text()) if metadata_path.exists() else None
+    version = next_version(release["tag_name"], previous)
     if previous:
-        if parse_version(release["tag_name"]) < parse_version(previous["upstream"]["tag"]):
-            raise ValueError("Refusing to downgrade to an older upstream release")
         for name, digest in previous["files"].items():
             if sha256((root / name).read_bytes()) != digest:
                 raise ValueError(f"Local mirrored file changed unexpectedly: {name}")
         manifest = tomllib.loads((root / "wally.toml").read_text())
         if manifest["package"]["version"] != previous["wally_version"]:
             raise ValueError("Manifest version disagrees with upstream.json")
-        if previous["upstream"]["tag"] == release["tag_name"] and previous["files"] == hashes:
+        same_version = parse_version(previous["upstream"]["tag"]) == parse_version(release["tag_name"])
+        if same_version and previous["files"] != hashes:
+            raise ValueError(
+                f"Upstream release {release['tag_name']} changed mirrored files, but release versions are immutable; "
+                "wait for a new numbered upstream release"
+            )
+        if previous["upstream"]["tag"] == release["tag_name"] and previous["wally_version"] == version:
             print(f"Already current: upstream {release['tag_name']}, Wally {previous['wally_version']}")
             return False
-    version = next_version(release["tag_name"], previous)
     metadata = {
         "schema_version": 1,
         "wally_version": version,
@@ -238,7 +236,7 @@ def sync(root=ROOT):
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
     readme_path = root / "README.md"
     if readme_path.exists():
-        readme = re.sub(r'ewanophobia/libmp-mirror@[0-9]+\.[0-9]+\.[0-9]+', f'ewanophobia/libmp-mirror@{version}', readme_path.read_text())
+        readme = re.sub(r'ewanophobia/libmp-mirror@=?[0-9]+\.[0-9]+\.[0-9]+', f'ewanophobia/libmp-mirror@={version}', readme_path.read_text())
         readme_path.write_text(readme)
     print(f"Mirrored upstream {release['tag_name']} as Wally {version}")
     return True

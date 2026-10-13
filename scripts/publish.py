@@ -31,6 +31,9 @@ PACKAGE_NAME = "ewanophobia/libmp-mirror"
 REGISTRY_API = "https://api.wally.run"
 REGISTRY_INDEX = "https://github.com/UpliftGames/wally-index"
 WALLY_VERSION = "0.3.2"
+# The original 1.1.0 archive predates the repo's Unlicense/layout change.
+# Reuse that immutable publication when restoring upstream version numbers.
+ORIGINAL_1_1_0_SHA256 = "0cd3c4ccc15efc8d90a106b3e33d6773d0c815dc82ce65d91ed78c7123643aa7"
 MAX_ARCHIVE_BYTES = 2 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 64 * 1024 * 1024
 ALLOWED_ROOT_FILES = {
@@ -128,6 +131,8 @@ def validate_archive(data: bytes) -> Package:
         raise PublishError("Archive must use the public Wally registry.")
     if package.get("private", False) is not False:
         raise PublishError("A private package cannot be published.")
+    if any(manifest.get(section, {}) for section in ("dependencies", "server-dependencies", "dev-dependencies")):
+        raise PublishError("LibMP must remain a standalone package with no dependencies.")
     if not isinstance(project, dict) or project.get("name") != "libmp-mirror" or project.get("tree") != {"$path": "libmp.luau"}:
         raise PublishError("Rojo project must map libmp-mirror directly to libmp.luau.")
 
@@ -185,6 +190,15 @@ def verify_matches(expected: Package, published: Package) -> None:
     if published.file_sha256 != expected.file_sha256:
         paths = expected.file_sha256.keys() | published.file_sha256.keys()
         changed = sorted(path for path in paths if expected.file_sha256.get(path) != published.file_sha256.get(path))
+        # Only the known original archive may have the older license layout.
+        # Its Luau bytes, Rojo mapping, and all upstream notices still match.
+        if (
+            expected.version == "1.1.0"
+            and hashlib.sha256(published.archive).hexdigest() == ORIGINAL_1_1_0_SHA256
+            and set(changed) <= {"LICENSE", "LICENSES/libmp.txt", "upstream.json", "wally.toml"}
+            and expected.file_sha256.get("LICENSES/libmp.txt") == published.file_sha256["LICENSE"]
+        ):
+            return
         raise PublishError(
             f"Published {expected.name}@{expected.version} differs in: {', '.join(changed)}. "
             "Wally versions are immutable; only README.md may differ."
@@ -197,7 +211,7 @@ def publish_archive(data: bytes, token: str | None, *, check_only: bool = False)
     existing = fetch_published(package)
     if existing is not None:
         verify_matches(package, existing)
-        return f"Verified {identity}: already published with matching package files (README.md excluded)."
+        return f"Verified {identity}: already published with matching LibMP source and upstream notices."
     if check_only:
         return f"Validated {identity}: not yet published."
     token = token.strip() if token else ""

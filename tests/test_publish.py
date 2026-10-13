@@ -1,6 +1,7 @@
 """Release safety tests; no external network or credentials are used."""
 
 import importlib.util
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -68,6 +69,15 @@ registry = 42
         with self.assertRaises(publish.PublishError):
             publish.validate_archive(package_zip(extra={"wally.toml": bad_manifest}))
 
+    def test_dependencies_are_rejected(self):
+        original = publish.validate_archive(package_zip())
+        with zipfile.ZipFile(io.BytesIO(original.archive)) as archive:
+            manifest = archive.read("wally.toml")
+        for section in ("dependencies", "server-dependencies", "dev-dependencies"):
+            extra = manifest + f'\n[{section}]\nOther = "someone/other@1.0.0"\n'.encode()
+            with self.subTest(section=section), self.assertRaisesRegex(publish.PublishError, "no dependencies"):
+                publish.validate_archive(package_zip(extra={"wally.toml": extra}))
+
     def test_invalid_version(self):
         for version in ("01.1.0", "1.0", "1.0.0-beta.01", "1.0.0/elsewhere"):
             with self.subTest(version=version), self.assertRaises(publish.PublishError):
@@ -100,6 +110,33 @@ class PublishTests(unittest.TestCase):
     def test_operational_readme_edits_do_not_require_republication(self, request):
         request.return_value = (200, package_zip(extra={"README.md": b"Original operating instructions."}))
         self.assertIn("already published", publish.publish_archive(self.data, None))
+
+    @patch.object(publish, "request")
+    def test_known_original_version_can_be_reused_after_license_move(self, request):
+        request.return_value = (200, self.data)
+        updated = package_zip(extra={
+            "LICENSE": b"Repository Unlicense.\n",
+            "LICENSES/libmp.txt": b"Example license for test fixtures.\n",
+            "upstream.json": b'{"wally_version":"1.1.0"}',
+        })
+        with patch.object(publish, "ORIGINAL_1_1_0_SHA256", hashlib.sha256(self.data).hexdigest()):
+            self.assertIn("already published", publish.publish_archive(updated, None))
+        with self.assertRaisesRegex(publish.PublishError, "differs in"):
+            publish.publish_archive(updated, None)
+        request.return_value = (200, package_zip(source=b"return {changed = true}\n"))
+        with self.assertRaisesRegex(publish.PublishError, "different libmp.luau"):
+            publish.publish_archive(updated, None)
+
+    @patch.object(publish, "request")
+    def test_original_version_still_requires_identical_upstream_license(self, request):
+        request.return_value = (200, self.data)
+        updated = package_zip(extra={
+            "LICENSE": b"Repository Unlicense.\n",
+            "LICENSES/libmp.txt": b"Different upstream license.\n",
+        })
+        with patch.object(publish, "ORIGINAL_1_1_0_SHA256", hashlib.sha256(self.data).hexdigest()):
+            with self.assertRaisesRegex(publish.PublishError, "differs in"):
+                publish.publish_archive(updated, None)
 
     @patch.object(publish, "request")
     def test_license_or_provenance_mismatch_is_rejected(self, request):
