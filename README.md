@@ -28,7 +28,7 @@ A [GitHub Action](https://github.com/Ewanophobia/libmp-mirror/actions/workflows/
 
 Versions follow upstream exactly (`1.1` becomes `1.1.0` for Wally). Packaging changes don't get their own version. [upstream.json](upstream.json) records the source release and checksums.
 
-The `=` pins the version: an earlier packaging-only `1.1.1` is still in Wally, which doesn't let package owners delete versions. To upgrade when Roblox releases a new version, change the pin and run `wally update`. If upstream changes a file without a new version, the sync stops rather than overwriting a published package.
+The `=` pins the version: an earlier packaging-only `1.1.1` is still in Wally, which doesn't let package owners delete versions. To upgrade when Roblox releases a new version, change the pin and run `wally install`. If upstream changes a file without a new version, the sync stops rather than overwriting a published package.
 
 ## License
 
