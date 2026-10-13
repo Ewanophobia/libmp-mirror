@@ -1,0 +1,6 @@
+{
+  "name": "libmp-mirror",
+  "tree": {
+    "$path": "libmp.luau"
+  }
+}

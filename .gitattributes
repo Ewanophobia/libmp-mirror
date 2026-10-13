@@ -1,0 +1,4 @@
+# Preserve release assets byte-for-byte, including upstream whitespace.
+libmp.luau -text -whitespace linguist-vendored
+LICENSE -text
+LICENSES/* -text

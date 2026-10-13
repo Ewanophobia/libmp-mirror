@@ -1,0 +1,128 @@
+name: Sync upstream release
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Forks must opt in by changing this guard before publishing their own package.
+    if: github.repository == 'Ewanophobia/libmp-mirror'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Extract the latest upstream release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/sync_upstream.py
+      - name: Install pinned Wally and Rojo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/libmp-tools"
+          cd "$RUNNER_TEMP/libmp-tools"
+          curl --fail --silent --show-error --location --retry 3 https://github.com/UpliftGames/wally/releases/download/v0.3.2/wally-v0.3.2-linux.zip -o wally.zip
+          echo '21fdbb53dfee397fd21ca7fdd208db65cff0f87f0fd045cdb594b951981bd73f  wally.zip' | sha256sum --check --strict
+          curl --fail --silent --show-error --location --retry 3 https://github.com/rojo-rbx/rojo/releases/download/v7.7.0/rojo-7.7.0-linux-x86_64.zip -o rojo.zip
+          echo '22503e5839864f9d7c2171c48b536fc229f2cc4d8774c9cc149f60941d864073  rojo.zip' | sha256sum --check --strict
+          unzip -q wally.zip
+          unzip -q rojo.zip
+          chmod +x wally rojo
+          echo "$RUNNER_TEMP/libmp-tools" >> "$GITHUB_PATH"
+      - name: Build and verify the package
+        run: |
+          mkdir -p dist
+          wally package --output dist/libmp-mirror.zip
+          rojo sourcemap default.project.json --output dist/sourcemap.json
+          rojo build default.project.json --output dist/libmp-mirror.rbxm
+          python -m unittest discover -s tests -v
+          python scripts/publish.py --archive dist/libmp-mirror.zip --check-only
+      - name: Commit the synchronized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- libmp.luau LICENSE LICENSES upstream.json wally.toml README.md
+          if ! git diff --cached --quiet; then
+            python - <<'PY'
+          import pathlib
+          import subprocess
+          import tomllib
+
+          manifest = tomllib.loads(pathlib.Path('wally.toml').read_text())
+          subprocess.run(['git', 'commit', '-m', 'chore: mirror libmp ' + manifest['package']['version']], check=True)
+          PY
+          fi
+          python scripts/keepalive.py
+          git push origin HEAD:main
+      # Always try publication: a previous run may have committed successfully
+      # before a registry outage. The publisher verifies existing versions.
+      - name: Publish and verify the Wally package
+        env:
+          WALLY_AUTH_TOKEN: ${{ secrets.WALLY_AUTH_TOKEN }}
+        run: python scripts/publish.py --archive dist/libmp-mirror.zip
+      - name: Create the public package release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import pathlib
+          import re
+          import subprocess
+          import tomllib
+
+          manifest = tomllib.loads(pathlib.Path('wally.toml').read_text())
+          version = manifest['package']['version']
+          if re.fullmatch(r'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', version) is None:
+              raise SystemExit('Refusing to tag an invalid package version')
+          tag = 'v' + version
+          existing = subprocess.run(['gh', 'release', 'view', tag], capture_output=True)
+          if existing.returncode == 0:
+              print('GitHub release already exists: ' + tag)
+              raise SystemExit(0)
+          # A failed release lookup can be transient. Creating an already-existing
+          # release fails safely; existing tags are never force-updated.
+          tag_exists = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/' + tag]).returncode == 0
+          if not tag_exists:
+              subprocess.run(['git', 'tag', tag], check=True)
+              subprocess.run(['git', 'push', 'origin', 'refs/tags/' + tag], check=True)
+          else:
+              # A previous run may have pushed the tag before release creation.
+              # Verify that this checkout still packages exactly the tagged files.
+              subprocess.run(['git', 'diff', '--exit-code', tag, 'HEAD', '--', 'libmp.luau', 'LICENSE', 'LICENSES', 'upstream.json', 'wally.toml', 'default.project.json', 'README.md'], check=True)
+          upstream = json.loads(pathlib.Path('upstream.json').read_text())
+          notes = pathlib.Path('dist/release-notes.md')
+          notes.write_text(
+              'Wally package: `ewanophobia/libmp-mirror@' + version + '`\n\n'
+              + 'Mirrors the [Roblox/libmp release](' + upstream['upstream']['release_url'] + '). '
+              + 'The Luau module is copied from the upstream release without modification.\n\n'
+              + 'Install with Wally:\n\n```toml\n[dependencies]\n'
+              + 'LibMP = "ewanophobia/libmp-mirror@' + version + '"\n```\n',
+              encoding='utf-8',
+          )
+          subprocess.run(['gh', 'release', 'create', tag, 'dist/libmp-mirror.zip', '--verify-tag', '--title', tag, '--notes-file', str(notes)], check=True)
+          PY

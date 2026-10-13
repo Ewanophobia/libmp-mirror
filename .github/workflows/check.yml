@@ -1,0 +1,51 @@
+name: Check package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+      - name: Install pinned Wally and Rojo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/libmp-tools"
+          cd "$RUNNER_TEMP/libmp-tools"
+          curl --fail --silent --show-error --location --retry 3 https://github.com/UpliftGames/wally/releases/download/v0.3.2/wally-v0.3.2-linux.zip -o wally.zip
+          echo '21fdbb53dfee397fd21ca7fdd208db65cff0f87f0fd045cdb594b951981bd73f  wally.zip' | sha256sum --check --strict
+          curl --fail --silent --show-error --location --retry 3 https://github.com/rojo-rbx/rojo/releases/download/v7.7.0/rojo-7.7.0-linux-x86_64.zip -o rojo.zip
+          echo '22503e5839864f9d7c2171c48b536fc229f2cc4d8774c9cc149f60941d864073  rojo.zip' | sha256sum --check --strict
+          unzip -q wally.zip
+          unzip -q rojo.zip
+          chmod +x wally rojo
+          echo "$RUNNER_TEMP/libmp-tools" >> "$GITHUB_PATH"
+      - name: Build package and Rojo model
+        run: |
+          mkdir -p dist
+          wally package --output dist/libmp-mirror.zip
+          rojo sourcemap default.project.json --output dist/sourcemap.json
+          rojo build default.project.json --output dist/libmp-mirror.rbxm
+      - name: Verify packaged files
+        run: |
+          python -m unittest discover -s tests -v
+          python scripts/publish.py --archive dist/libmp-mirror.zip --check-only
