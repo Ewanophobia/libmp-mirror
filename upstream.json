@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "wally_version": "1.1.0",
+  "wally_version": "1.1.1",
   "upstream": {
     "repository": "Roblox/libmp",
     "tag": "1.1",
@@ -24,8 +24,8 @@
     ]
   },
   "files": {
-    "LICENSE": "bbc1e8aeda39702036365b6edfce7325e94500f6766a7424760ba2a726bd14e7",
     "LICENSES/flatbuffers.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "LICENSES/libmp.txt": "bbc1e8aeda39702036365b6edfce7325e94500f6766a7424760ba2a726bd14e7",
     "LICENSES/lz4.txt": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c",
     "LICENSES/spider_runtime.txt": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
     "libmp.luau": "236fea082f323facd08109f9fd6dab70350bd0cc69617e07cc194778415a0bb8"

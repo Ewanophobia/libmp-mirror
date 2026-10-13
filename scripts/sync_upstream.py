@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "Roblox/libmp"
 API = f"https://api.github.com/repos/{REPOSITORY}"
 LICENSE_PATHS = {
-    "LICENSE": "LICENSE",
+    "LICENSES/libmp.txt": "LICENSE",
     "LICENSES/flatbuffers.txt": "src/dependencies/flatbuffers/LICENSE",
     "LICENSES/lz4.txt": "src/dependencies/lz4/LICENSE",
     "LICENSES/spider_runtime.txt": "src/dependencies/spider_runtime/LICENSE",
@@ -133,7 +133,7 @@ def extract_bundle(data):
         ], "LibMP.luau in release archive")
         files = {"libmp.luau": read_member(archive, module)}
         for target, dependency in [
-            ("LICENSE", "libmp"), ("LICENSES/flatbuffers.txt", "flatbuffers"),
+            ("LICENSES/libmp.txt", "libmp"), ("LICENSES/flatbuffers.txt", "flatbuffers"),
             ("LICENSES/lz4.txt", "lz4"), ("LICENSES/spider_runtime.txt", "spider_runtime"),
         ]:
             member = unique([

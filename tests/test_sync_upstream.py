@@ -21,7 +21,7 @@ COMMIT = "a" * 40
 SOURCE = b"-- upstream fixture\nreturn {Version = '1.1'}\n"
 FILES = {
     "libmp.luau": SOURCE,
-    "LICENSE": b"Fixture LibMP license\n",
+    "LICENSES/libmp.txt": b"Fixture LibMP license\n",
     "LICENSES/flatbuffers.txt": b"Fixture FlatBuffers license\n",
     "LICENSES/lz4.txt": b"Fixture LZ4 license\n",
     "LICENSES/spider_runtime.txt": b"Fixture Spider license\n",
@@ -57,7 +57,7 @@ def bundle(members=None):
     if members is None:
         members = {"libmp-all-languages/luau/LibMP.luau": SOURCE}
         for target, dependency in (
-            ("LICENSE", "libmp"), ("LICENSES/flatbuffers.txt", "flatbuffers"),
+            ("LICENSES/libmp.txt", "libmp"), ("LICENSES/flatbuffers.txt", "flatbuffers"),
             ("LICENSES/lz4.txt", "lz4"), ("LICENSES/spider_runtime.txt", "spider_runtime"),
         ):
             members[f"libmp-all-languages/licenses/{dependency}/LICENSE"] = FILES[target]
@@ -122,11 +122,13 @@ class ArtifactTests(OfflineTests):
         # member paths to the filesystem, even for a malicious archive.
         data = bundle({
             "../../LibMP.luau": SOURCE,
-            "../../licenses/libmp/LICENSE": FILES["LICENSE"],
+            "../../licenses/libmp/LICENSE": FILES["LICENSES/libmp.txt"],
             "/absolute/other.txt": b"must be ignored",
             "../../outside.txt": b"must be ignored",
         })
-        self.assertEqual(sync.extract_bundle(data), {"libmp.luau": SOURCE, "LICENSE": FILES["LICENSE"]})
+        self.assertEqual(sync.extract_bundle(data), {
+            "libmp.luau": SOURCE, "LICENSES/libmp.txt": FILES["LICENSES/libmp.txt"],
+        })
 
     def test_ambiguous_or_absent_module_and_ambiguous_license_fail(self):
         fixtures = [
@@ -225,6 +227,23 @@ class MirrorTests(OfflineTests):
         self.files["libmp.luau"] = b"return {newRelease = true}\n"
         self.assertTrue(sync.sync(self.root))
         self.assertEqual(tomllib.loads((self.root / "wally.toml").read_text())["package"]["version"], "1.1.2")
+
+    def test_initial_and_replacement_sync_preserve_repository_license(self):
+        repository_license = b"Repository-owned Unlicense text\n"
+        license_path = self.root / "LICENSE"
+        license_path.write_bytes(repository_license)
+
+        self.assertTrue(sync.sync(self.root))
+        self.assertEqual(license_path.read_bytes(), repository_license)
+        self.assertEqual((self.root / "LICENSES/libmp.txt").read_bytes(), FILES["LICENSES/libmp.txt"])
+
+        self.files["LICENSES/libmp.txt"] = b"Updated upstream LibMP license\n"
+        self.assertTrue(sync.sync(self.root))
+        self.assertEqual(license_path.read_bytes(), repository_license)
+        self.assertEqual((self.root / "LICENSES/libmp.txt").read_bytes(), self.files["LICENSES/libmp.txt"])
+        metadata = json.loads((self.root / "upstream.json").read_text())
+        self.assertNotIn("LICENSE", metadata["files"])
+        self.assertEqual(metadata["files"]["LICENSES/libmp.txt"], sync.sha256(self.files["LICENSES/libmp.txt"]))
 
     def test_local_module_tampering_stops_without_writing(self):
         sync.sync(self.root)

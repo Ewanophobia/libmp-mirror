@@ -1,8 +1,8 @@
 [package]
 name = "ewanophobia/libmp-mirror"
 description = "Unofficial, automatically updated Wally mirror of Roblox LibMP."
-version = "1.1.0"
-license = "MIT AND Apache-2.0 AND BSD-2-Clause AND MPL-2.0"
+version = "1.1.1"
+license = "Unlicense AND MIT AND Apache-2.0 AND BSD-2-Clause AND MPL-2.0"
 authors = ["Roblox", "Ewanophobia (Wally packaging)"]
 realm = "shared"
 registry = "https://github.com/UpliftGames/wally-index"
