@@ -3,7 +3,7 @@
 [![Checks](https://github.com/Ewanophobia/libmp-mirror/actions/workflows/check.yml/badge.svg)](https://github.com/Ewanophobia/libmp-mirror/actions/workflows/check.yml)
 [![Sync and publish](https://github.com/Ewanophobia/libmp-mirror/actions/workflows/sync.yml/badge.svg)](https://github.com/Ewanophobia/libmp-mirror/actions/workflows/sync.yml)
 
-A public, open source Wally package for [Roblox LibMP](https://github.com/Roblox/libmp), the Luau library for reading Roblox MicroProfiler data. Anyone can install and use this package. This is an unofficial distribution maintained by Ewanophobia; Roblox develops LibMP.
+A public, open source Wally package for [Roblox LibMP](https://github.com/Roblox/libmp), the Luau library for reading Roblox MicroProfiler data. Anyone can install and use this package. This is an unofficial distribution maintained by me; Roblox develops LibMP.
 
 ## Install
 
